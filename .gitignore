@@ -1,0 +1,6 @@
+DockAndScore/dataset/*.csv
+DockAndScore/dataset/*.mol2
+
+DockAndScore/Results/*.csv
+
+HEAppE_Manager/data_transfer/input/input_parameters/*.txt
