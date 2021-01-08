@@ -69,7 +69,3 @@ class Logger(object):
                 self.moveInputFile(name, s, self.status_dict[state])
 
         log.to_csv(self.log_file, index=False)
-
-
-    def hello(self):
-        return "Hello"

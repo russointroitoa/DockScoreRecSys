@@ -284,17 +284,79 @@ class HEAppE_Manager(object):
                 "SessionCode": session_code
             }
         }
-
+        print("Waiting for output files ..")
         r = self.ft.heappe_file_transfer_list_changed_files_for_job_post(**ft_body)
         r_data = json.loads(r.data)
 
         return r_data
 
 
-    def downloadOutput(self, session_code, job_id):
-        # TODO
-        pass
+    def getSSHConnection(self, session_code, job_id):
 
+        # SSH Connection
+        ft_body = {
+            "_preload_content": False,
+            "body": {
+                "SubmittedJobInfoId": job_id,
+                "SessionCode": session_code
+            }
+        }
+
+        r = self.ft.heappe_file_transfer_get_file_transfer_method_post(**ft_body)
+        r_data = json.loads(r.data)
+
+        ssh = SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh_username = r_data["Credentials"]["UserName"]
+        pkey_file = StringIO(r_data["Credentials"]["PrivateKey"])
+        pkey = paramiko.rsakey.RSAKey.from_private_key(pkey_file)
+        ssh.connect(r_data["ServerHostname"], username=ssh_username, pkey=pkey)
+        base_path = r_data["SharedBasepath"]
+
+        return ssh, base_path
+
+    def downloadOutput(self, session_code, job_id):
+        """
+        If final results are available, take only them; otherwise, store rank output in a folder in output
+        :param session_code:
+        :param job_id:
+        :return:
+        """
+        out_files = self.getListChangedFilesForJob(session_code, job_id)
+        out_files = [os.path.normpath(f) for f in out_files]
+
+        print(f"Output files: {' '.join(out_files)}")
+
+        filenames = [f for f in out_files if "final_results_" in f]
+        out_folder = "/Users/alessiorussointroito/Documents/GitHub/DockScoreRecSys/DockAndScore/Results" # TODO Absolute Path
+
+        ssh, base_path = self.getSSHConnection(session_code, job_id)
+
+        # SCP Transfer
+        with SCPClient(ssh.get_transport()) as scp:
+            input_params = [f for f in out_files if "input_parameters_" in f][0]
+            db_name = os.path.basename(input_params).replace("input_parameters_", "")
+            db_name = db_name.split("_")[:-1]
+            db_name = "_".join(db_name)
+
+            if len(filenames) == 1:
+                print("Get only final results")
+                fn = filenames[0]
+                print(f"{os.path.basename(fn)} --> {os.path.join(out_folder, db_name, os.path.basename(fn))}")
+                scp.get(os.path.join(base_path, fn), os.path.join(out_folder, db_name, os.path.basename(fn)))
+            else:
+                print("Final Results not available. Store ranks output")
+                for fn in out_files:
+                    local_path = os.path.join(self.output_folder, {job_id})
+                    Path(os.path.dirname(os.path.join(local_path, fn))).mkdir(parents=True, exist_ok=True)
+                    print(f"{os.path.join(base_path, fn)} --> {os.path.join(local_path, fn)}")
+
+                    scp.get(os.path.join(base_path, fn), os.path.join(local_path, fn))
+
+
+    def getStdOutputFiles(self, session_code, job_id):
+        # TODO
+        pass
 
     def cancelJob(self, session_code, job_id):
         # Cancel Job
